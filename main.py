@@ -1,353 +1,203 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
-from scipy.optimize import curve_fit
-from scipy import signal
-from  scipy.optimize import OptimizeWarning
-import warnings
-from finta import TA
-import os
-from utils import TradingGraph, Write_to_file
-from datetime import date, datetime, timedelta
-import math
-from collections import deque
-import neat
-import pickle as pickle
-from statsmodels.tsa.ar_model import AutoReg, ar_select_order
 from sklearn.linear_model import LinearRegression
-from sklearn.svm import SVR
-from sklearn.model_selection import train_test_split
-import random 
 from sklearn.preprocessing import PolynomialFeatures
+from collections import deque
+import os
+import math
+from utils import TradingGraph  # Ensure this module is properly imported
 
 class CustomEnv:
-     def __init__(self,df,Drawdown_P,Crystalball,Stoploss,LotSize,AccountSize,Decimals,Spread,Multiple,df_normalized,Convertion=1,initial_balance=5000,lookback_window_size=100,Render_range=100,show_reward=False,Show_indicators=False):
-         self.df=df.reset_index()
-         df.total_steps=len(self.df)-1
-         self.initial_balance=initial_balance
-         self.lookback_window_size=lookback_window_size
-         self.Render_range=Render_range
-         self.show_reward=show_reward
-         self.Show_indicators=Show_indicators
-         self.df_total_steps = len(self.df)-1        
-         self.orders_history = deque(maxlen=self.lookback_window_size)
-         self.Accurate=0
-         self.df_normalized=df_normalized
-         self.market_history = deque(maxlen=self.lookback_window_size)
-         self.PNL=0
-         self.TradesAnalyst=[0]
-         self.Decimals=Decimals
-         self.LotSize=LotSize
-         self.AccountSize=AccountSize
-         self.Spread=Spread
-         self.Multiple=Multiple
-         self.Convertion=Convertion
-         self.Stoploss=Stoploss
-         self.Drawdown_P=Drawdown_P
-         self.Crystalball=Crystalball
-         
-         self.columns = list(self.df.columns[5:])
-     
-     def reset(self,env_steps_size=4320):
-         self.visualization = TradingGraph(Render_range=self.Render_range, Show_reward=self.show_reward, Show_indicators=self.Show_indicators) # init visualization
-         self.trades = deque(maxlen=self.Render_range)
-         self.balance = self.initial_balance
-         self.net_worth = self.initial_balance
-         self.prev_episode_orders = 0
-         self.prev_net_worth = self.initial_balance
-         self.positions_held = 0
-         self.Sells = 0
-         self.Buys = 0
-         self.Holding=False
-         self.HoldValue=0
-         self.OrderBuy=False
-         self.OrderSell=False
+    def __init__(self, df, drawdown_p, crystalball, stoploss, lot_size, account_size, decimals, spread, multiple, df_normalized, 
+                 conversion=1, initial_balance=5000, lookback_window_size=100, render_range=100, show_reward=False, show_indicators=False):
+        self.df = df.reset_index()
+        self.initial_balance = initial_balance
+        self.lookback_window_size = lookback_window_size
+        self.render_range = render_range
+        self.show_reward = show_reward
+        self.show_indicators = show_indicators
+        self.df_total_steps = len(self.df) - 1
+        self.orders_history = deque(maxlen=self.lookback_window_size)
+        self.market_history = deque(maxlen=self.lookback_window_size)
+        self.df_normalized = df_normalized
+        self.columns = list(self.df.columns[5:])
+        
+        # Trading parameters
+        self.decimals = decimals
+        self.lot_size = lot_size
+        self.account_size = account_size
+        self.spread = spread
+        self.multiple = multiple
+        self.conversion = conversion
+        self.stoploss = stoploss
+        self.drawdown_p = drawdown_p
+        self.crystalball = crystalball
+        
+        # State variables
+        self.balance = self.initial_balance
+        self.net_worth = self.initial_balance
+        self.positions_held = 0
+        self.buys = 0
+        self.sells = 0
+        self.holding = False
+        self.hold_value = 0
+        self.order_buy = False
+        self.order_sell = False
+        self.pnl = 0
+        self.trades_analyst = [0]
+        self.accurate = 0
+        self.trades = deque(maxlen=self.render_range)
 
+    def reset(self, env_steps_size=4320):
+        self.visualization = TradingGraph(render_range=self.render_range, show_reward=self.show_reward, show_indicators=self.show_indicators)
+        self.balance = self.initial_balance
+        self.net_worth = self.initial_balance
+        self.positions_held = 0
+        self.buys = 0
+        self.sells = 0
+        self.holding = False
+        self.hold_value = 0
+        self.order_buy = False
+        self.order_sell = False
+        self.pnl = 0
+        self.trades_analyst = [0]
+        self.accurate = 0
+        self.trades.clear()
 
-         self.episode_orders = 0 # track episode orders count
-         self.prev_episode_orders = 0 # track previous episode orders count
-         self.env_steps_size = env_steps_size
-         self.punish_value = 0
-         if env_steps_size > 0: # used for training dataset
-             self.start_step =self.df_total_steps - env_steps_size
-             self.end_step = self.start_step + env_steps_size
-         else: # used for testing dataset
-             self.start_step = self.lookback_window_size
-             self.end_step = self.df_total_steps
-            
-         self.current_step = self.start_step
-         
-         for i in reversed(range(self.lookback_window_size)):
+        if env_steps_size > 0:
+            self.start_step = self.df_total_steps - env_steps_size
+            self.end_step = self.start_step + env_steps_size
+        else:
+            self.start_step = self.lookback_window_size
+            self.end_step = self.df_total_steps
+
+        self.current_step = self.start_step
+
+        for i in reversed(range(self.lookback_window_size)):
             current_step = self.current_step - i
-            self.orders_history.append([self.balance,
-                                        self.net_worth,
-                                        self.Buys,
-                                        self.Sells,
-                                        self.positions_held
-                                        ])
-
-            # one line for loop to fill market history withing reset call
+            self.orders_history.append([self.balance, self.net_worth, self.buys, self.sells, self.positions_held])
             self.market_history.append([self.df.loc[current_step, column] for column in self.columns])
-            
-         state = np.concatenate((self.orders_history, self.market_history), axis=1)
 
-         return self.df[self.current_step-self.Crystalball:self.current_step]
-         
-     def next_observation(self):
-         #self.market_history.append([self.df.loc[self.current_step, column] for column in self.columns])
-         #print(self.df.loc[self.current_step:,'Volume':'CloseDiff'])
-         obs = np.concatenate((self.orders_history, self.market_history), axis=1)
-         print('Observation',self.current_step-50)
-         return self.df.loc[(self.current_step-self.Crystalball):self.current_step,'Open':'CloseDiff']
-      
-     def step(self, action):
-            # Set the current price to a random price between open and close
-            #current_price = random.uniform(
-            #    self.df.loc[self.current_step, 'Open'],
-            #    self.df.loc[self.current_step, 'Close'])
-            current_price = self.df.loc[self.current_step, 'Close']
-            Date = self.df.loc[self.current_step, 'Date'] # for visualization
-            High = self.df.loc[self.current_step, 'High'] # for visualization
-            Low = self.df.loc[self.current_step, 'Low'] # for visualization
-            if self.OrderBuy==True:
-                 Pnl =self.BuyPNLIndex(current_price)
-                 if Pnl<-1*self.Stoploss:
-                     self.balance+=Pnl
-                     print("Stoploss Hit")
-                     self.PNL+=Pnl
-                     self.OrderBuy=False
-                     self.trades.append({'Date' : Date, 'High' : High, 'Low' : Low, 'total': self.Buys, 'type': "close", 'current_price': current_price})
-                     self.Holding=False
-                     self.TradesAnalyst.append(Pnl)
-                     
-            if self.OrderSell==True:
-                 Pnl =self.SellPNLIndex(current_price)
-                 if Pnl<-1*self.Stoploss:
-                     self.balance+=Pnl
-                     print("Stoploss Hit")
-                     self.PNL+=Pnl
-                     self.OrderSell=False
-                     self.trades.append({'Date' : Date, 'High' : High, 'Low' : Low, 'total': self.Buys, 'type': "close", 'current_price': current_price})
-                     self.Holding=False
-                     self.TradesAnalyst.append(Pnl)
-                     
-             
-            if self.OrderBuy==True and action==-1:
-             Pnl = self.BuyPNLIndex(current_price)
-             self.balance+=Pnl
-             print('Buy Close ...PNL:',Pnl)
-             if Pnl>0:
-                 self.Accurate+=1
-             self.PNL+=Pnl
-             self.OrderBuy=False
-             self.trades.append({'Date' : Date, 'High' : High, 'Low' : Low, 'total': self.Buys, 'type': "close", 'current_price': current_price})
-             self.Holding=False
-             self.TradesAnalyst.append(Pnl)
+        return self.df[self.current_step - self.crystalball:self.current_step]
 
-            if self.OrderSell==True and action==1:
-             Pnl = self.SellPNLIndex(current_price)
-             self.trades.append({'Date' : Date, 'High' : High, 'Low' : Low, 'total': self.Buys, 'type': "close", 'current_price': current_price})
-             self.balance+=Pnl
-             self.PNL+=Pnl
-             print('Sell Close ....PNL:',Pnl)
-             if Pnl>0:
-                 self.Accurate+=1
-             self.OrderSell=False
-             self.Holding=False
-             self.TradesAnalyst.append(Pnl)
+    def next_observation(self):
+        return self.df.loc[(self.current_step - self.crystalball):self.current_step, 'Open':'CloseDiff']
 
-            if action == 1 and self.balance > self.initial_balance*self.Drawdown_P:
-                # Buy with 0,1
-                if self.OrderSell==False and self.Holding==False:
-                    self.Buys +=1
-                    self.trades.append({'Date' : Date, 'High' : High, 'Low' : Low, 'total': self.Buys, 'type': "buy", 'current_price': current_price})
-                    self.episode_orders += 1
-                    self.Holding=True
-                    self.HoldValue=current_price
-                    self.OrderBuy=True
-                    print("Buy Opened")
+    def step(self, action):
+        current_price = self.df.loc[self.current_step, 'Close']
+        date = self.df.loc[self.current_step, 'Date']
+        high = self.df.loc[self.current_step, 'High']
+        low = self.df.loc[self.current_step, 'Low']
+
+        if self.order_buy:
+            pnl = self.buy_pnl_index(current_price)
+            if pnl < -self.stoploss:
+                self.balance += pnl
+                self.pnl += pnl
+                self.order_buy = False
+                self.holding = False
+                self.trades.append({'Date': date, 'High': high, 'Low': low, 'total': self.buys, 'type': "close", 'current_price': current_price})
+                self.trades_analyst.append(pnl)
+
+        if self.order_sell:
+            pnl = self.sell_pnl_index(current_price)
+            if pnl < -self.stoploss:
+                self.balance += pnl
+                self.pnl += pnl
+                self.order_sell = False
+                self.holding = False
+                self.trades.append({'Date': date, 'High': high, 'Low': low, 'total': self.sells, 'type': "close", 'current_price': current_price})
+                self.trades_analyst.append(pnl)
+
+        if action == 1 and self.balance > self.initial_balance * self.drawdown_p:
+            if not self.order_sell and not self.holding:
+                self.buys += 1
+                self.trades.append({'Date': date, 'High': high, 'Low': low, 'total': self.buys, 'type': "buy", 'current_price': current_price})
+                self.holding = True
+                self.hold_value = current_price
+                self.order_buy = True
+
+        if action == -1 and self.balance > self.initial_balance * self.drawdown_p:
+            if not self.order_buy and not self.holding:
+                self.sells += 1
+                self.trades.append({'Date': date, 'High': high, 'Low': low, 'total': self.sells, 'type': "sell", 'current_price': current_price})
+                self.holding = True
+                self.hold_value = current_price
+                self.order_sell = True
+
+        if self.order_buy:
+            pnl = self.buy_pnl_index(current_price)
+            self.net_worth = self.balance + pnl
+        if self.order_sell:
+            pnl = self.sell_pnl_index(current_price)
+            self.net_worth = self.balance + pnl
+
+        self.orders_history.append([self.balance, self.net_worth, self.buys, self.sells, self.positions_held])
+        self.current_step += 1
+
+        done = self.net_worth <= self.initial_balance * self.drawdown_p
+        obs = self.next_observation()
+
+        return obs, done
+
+    def render(self, visualize=False):
+        if visualize:
+            return self.visualization.render(self.df.loc[self.current_step], self.net_worth, self.trades)
+
+    def buy_pnl_index(self, current_price):
+        return round(self.conversion * (current_price - self.hold_value - self.spread) * self.lot_size * self.multiple, 2)
+
+    def sell_pnl_index(self, current_price):
+        return round(self.conversion * (self.hold_value - current_price - self.spread) * self.lot_size * self.multiple, 2)
 
 
-            if action == -1 and self.balance > self.initial_balance*self.Drawdown_P:
-                # Sell 0,1       
-                if self.OrderBuy==False and self.Holding==False:
-                    self.trades.append({'Date' : Date, 'High' : High, 'Low' : Low, 'total': self.Sells, 'type': "sell", 'current_price': current_price})
-                    self.episode_orders += 1
-                    self.Sells+=1
-                    self.HoldValue=current_price
-                    self.OrderSell=True
-                    print("Sell Opened")
+def random_games(env, visualize, test_episodes=1, comment=""):
+    days = 0
+    step = 10 / 1440
 
-                
-                
-            
-
-
-            if self.OrderBuy==True:
-             Pnl = self.BuyPNLIndex(current_price)
-             self.prev_net_worth = self.net_worth
-             self.net_worth=self.balance+Pnl
-             print("updating system...Currently Buy")
-            if self.OrderSell==True:
-             Pnl = self.SellPNLIndex(current_price)
-             self.net_worth=self.balance+Pnl
-             print("updating system...Currently Sell")
-
-           
-       
-            
-            self.orders_history.append([self.balance,
-                                            self.net_worth,
-                                            self.Buys,
-                                            self.Sells,
-                                            self.positions_held
-                                            ])
-
-            # Receive calculated reward
-
-            self.current_step += 1
-            if self.net_worth <= self.initial_balance*self.Drawdown_P:
-                done = True
-            else:
-                done = False
-
-            obs = self.next_observation()
-            
-            return obs, done
-            
-
-            
-         # render environment
-     def render(self, visualize = False):
-        #print(f'Step: {self.current_step}, Net Worth: {self.net_worth}')
-         if visualize:
-            # Render the environment to the screen
-                img = self.visualization.render(self.df.loc[self.current_step], self.net_worth, self.trades)
-                return img
-                
-     def BuyPNL(self,current_price):
-         return self.Convertion*round((math.trunc(current_price*self.Multiple)-math.trunc(self.HoldValue*self.Multiple)-self.Spread)*(self.LotSize*(self.Decimals*self.AccountSize)/current_price),2)
-             
-             
-     def SellPNL(self,current_price):
-         return self.Convertion*round((math.trunc(self.HoldValue*self.Multiple)-math.trunc(current_price*self.Multiple)-self.Spread)*(self.LotSize*(self.Decimals*self.AccountSize)/current_price),2)             
-     
-     def SellPNLIndex(self,current_price):
-         return round(self.Convertion*(self.HoldValue-current_price-self.Spread)*self.LotSize*self.Multiple,2)
-         
-     def BuyPNLIndex(self,current_price):
-         return round(self.Convertion*(current_price-self.HoldValue-self.Spread)*self.LotSize*self.Multiple,2)
-
-
-def Random_games(env, visualize, test_episodes = 1, comment=""):
-    Days=0
-    average_net_worth = 0
-    average_orders = 0
-    no_profit_episodes = 0
-    
-    step=10/1440
     for episode in range(test_episodes):
         state = env.reset()
         while True:
             env.render(visualize)
-            action = getaction(state)
-            print('Position',action)
+            action = get_action(state)
             state, done = env.step(action)
             os.system('cls')
-            Days=Days+step
-            print("Accuracy %: {}, \nnet_worth: {},  \naverage_profit_per_trade: {},  \norders: {},\nmax_profit: {},\nmax_loss: {},\nTotalAccurateTrades {},\nDays:{},Profit% {} :".format(env.Accurate/env.episode_orders, env.balance, env.PNL/env.episode_orders,
-                                                                                                                                     env.episode_orders,max(env.TradesAnalyst),min(env.TradesAnalyst),env.Accurate,Days,(env.PNL/env.initial_balance)*100))
-            if done ==True:
-                 break
-
-            if env.current_step == env.end_step:
-                average_net_worth += env.net_worth
-                average_orders += env.episode_orders
-                if env.net_worth < env.initial_balance: no_profit_episodes += 1 # calculate episode count where we had negative profit through episode
-                print("Accuracy %: {}, \nnet_worth: {}, average_profit_per_trade: {}, orders: {},max_profit: {},max_loss: {},TotalAccurateTrades {},Days {},Profit% {} :".format(env.Accurate/env.episode_orders, env.balance, env.PNL/env.episode_orders,
-                                                                                                                                     env.episode_orders,max(env.TradesAnalyst),min(env.TradesAnalyst),env.Accurate,Days,(env.PNL/env.initial_balance)*100))
-     
-                prompt ="\nAccuracy %: {}, \nnet_worth: {}, \naverage_profit_per_trade: {}, \norders: {},\nmax_profit: {},\nmax_loss: {},\nTotalAccurateTrades {},\nDays {},\nProfit% {},\nInitial_balance :,\nLotSize : {},\nSpread,".format(env.Accurate/env.episode_orders, env.balance, env.PNL/env.episode_orders,
-                                                                                                                                     env.episode_orders,max(env.TradesAnalyst),min(env.TradesAnalyst),env.Accurate,Days,(env.PNL/env.initial_balance)*100,env.initial_balance,env.LotSize,env.Spread)
-                with open('Analysis.txt','w') as f:
-                     f.writelines(prompt)
-                
+            days += step
+            print(f"Accuracy %: {env.accurate / env.episode_orders}, \nNet Worth: {env.balance}, \nAverage Profit per Trade: {env.pnl / env.episode_orders}, \nOrders: {env.episode_orders}, \nMax Profit: {max(env.trades_analyst)}, \nMax Loss: {min(env.trades_analyst)}, \nTotal Accurate Trades: {env.accurate}, \nDays: {days}, \nProfit %: {(env.pnl / env.initial_balance) * 100}")
+            if done or env.current_step == env.end_step:
                 break
 
- 
-def getaction(df):
-    future_days =1
-    df[str(future_days)+'_Day_Price_Forecast']=df[['CloseDiff']].shift(-future_days)
-    df=df[['CloseDiff',str(future_days)+'_Day_Price_Forecast']]
-    #print(df.tail())
-    X=np.array(df[['CloseDiff']])
-    X=X[:df.shape[0]-future_days]
-    #print('Inputs',len(X))
-    y=np.array(df[str(future_days)+'_Day_Price_Forecast'])
-    y=y[:-future_days]
-    
-    
-    #x=x.reshape(-1,1)
-    poly=PolynomialFeatures(degree=4)
-    
-    X_poly=poly.fit_transform(X)
-    print(X_poly)
-    poly.fit(X_poly,y)
-    
-    LinReg=LinearRegression()
-    LinReg.fit(X_poly,y)
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    #print('Outputs',len(y))
-    #ytest=np.array(df_tst[['Close']])
-    #print('====================================')
-    #svr_rbf=SVR(kernel='rbf',C=1e3,gamma=0.00001)
-    #svr_rbf=LinearRegression()
-    
-    #svr_rbf.fit(X,y)
 
-    svr_rbf_confidence=LinReg.score(X_poly,y)
-    print("SVR ACCURACY",svr_rbf_confidence)
-    y=np.array(df['CloseDiff'].iloc[-1])
-    #print("Current value:",y)
-    
-    y2=0#LinReg.predict(X_poly[-1].reshape(-1,1))
-    #print("Prediction:",y2)
-    #df=df.drop(df.index[0])
-    #print('end before',df.tail(1))
-    #print('====================================')
-    #df.loc[i,'Close']=df_tst.loc[i,'Close']
-    #print('End after',df.tail(1))
-    prediction=0
-    if 0>y:
-         prediction=1
-         print("Buy prediction",y)
-    elif 0<y:
-         prediction=-1
-         print("Sell prediction",y2)
-         
+def get_action(df):
+    future_days = 1
+    df[f'{future_days}_Day_Price_Forecast'] = df['CloseDiff'].shift(-future_days)
+    df = df[['CloseDiff', f'{future_days}_Day_Price_Forecast']]
+    X = np.array(df[['CloseDiff']])
+    X = X[:df.shape[0] - future_days]
+    y = np.array(df[f'{future_days}_Day_Price_Forecast'])
+    y = y[:-future_days]
+
+    poly = PolynomialFeatures(degree=4)
+    X_poly = poly.fit_transform(X)
+    lin_reg = LinearRegression()
+    lin_reg.fit(X_poly, y)
+
+    svr_rbf_confidence = lin_reg.score(X_poly, y)
+    print(f"SVR Accuracy: {svr_rbf_confidence}")
+
+    y_current = np.array(df['CloseDiff'].iloc[-1])
+    prediction = 1 if 0 > y_current else -1 if 0 < y_current else 0
+    print(f"Prediction: {prediction}")
+
     return prediction
-    
 
+
+# Load data and initialize environment
 df = pd.read_csv('../US30(10).csv')
-df.columns=['Date','Open','High','Low','Close','Volume']
-df['CloseDiff']=df['Close'].diff()
-#r=random.randint(1,15000)
-#r2=random.randint(1,20000)
-df=df[3000:]
-env=CustomEnv(df=df,Crystalball=1000,Drawdown_P=0.95,df_normalized=df,LotSize=0.02,AccountSize=1,Decimals=1,Spread=6,Multiple=1,Convertion=17.99,Stoploss=60)
-Days=0
-Random_games(env,visualize=True);
+df.columns = ['Date', 'Open', 'High', 'Low', 'Close', 'Volume']
+df['CloseDiff'] = df['Close'].diff()
+df = df[3000:]
 
- 
- 
+env = CustomEnv(df=df, crystalball=1000, drawdown_p=0.95, df_normalized=df, lot_size=0.02, account_size=1, decimals=1, spread=6, multiple=1, conversion=17.99, stoploss=60)
+random_games(env, visualize=True)
