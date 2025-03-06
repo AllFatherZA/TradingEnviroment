@@ -1,0 +1,18 @@
+# requirements.txt
+
+# Core Libraries
+pandas>=1.3.0
+numpy>=1.21.0
+matplotlib>=3.4.0
+
+# Machine Learning and Optimization
+scikit-learn>=1.0.0
+scipy>=1.7.0
+
+# Utilities
+deque>=0.0.0  # Part of Python's standard library (collections)
+
+# Optional (if using additional features)
+# finta>=1.3.0  # For technical analysis (if used in your code)
+# neat-python>=0.92  # For neuroevolution (if used in your code)
+# statsmodels>=0.13.0  # For autoregressive models (if used in your code)
