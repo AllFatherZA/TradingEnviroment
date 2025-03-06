@@ -1,90 +1,118 @@
-# README.md
+Trading Environment Simulation
+This project simulates a trading environment using historical market data. It includes a custom environment for trading, a reinforcement learning setup, and tools for visualizing trading performance. The environment allows users to test trading strategies, simulate trades, and analyze results.
 
-## Custom Trading Environment
+Table of Contents
+Features
 
-This repository contains a custom trading environment written in Python for creating and testing trading strategies. The environment is designed to simulate trading scenarios and evaluate the performance of trading algorithms.
+Installation
 
-### Introduction
+Usage
 
-The custom trading environment is built using the `CustomEnv` class and includes various functionalities for backtesting and evaluating trading strategies. The environment allows users to interact with historical price data, define trading parameters, and simulate trades based on predefined actions.
+Code Structure
 
-### Requirements
+Dependencies
 
-To run the custom trading environment, you will need the following:
+Contributing
 
-- Python 3.x
-- Required Python libraries: `pandas`, `numpy`, `matplotlib`, `scipy`, `finta`, `statsmodels`, `sklearn`
+License
 
-### Getting Started
+Features
+Custom Trading Environment: Simulates a trading environment with historical market data.
 
-1. Clone this repository to your local machine.
+Trading Strategies: Supports buy/sell actions with stop-loss and drawdown management.
 
-2. Ensure you have Python 3.x installed.
+Visualization: Provides real-time visualization of trading performance.
 
-3. Install the required Python libraries using the following command:
+Machine Learning Integration: Uses polynomial regression for price forecasting.
 
-```
-pip install pandas numpy matplotlib scipy finta statsmodels scikit-learn
-```
+Performance Metrics: Tracks accuracy, net worth, profit/loss, and other key metrics.
 
-### How to Use
+Installation
+Clone the Repository:
 
-1. Import the necessary libraries:
+bash
+Copy
+git clone https://github.com/your-username/trading-environment.git
+cd trading-environment
+Install Dependencies:
+Ensure you have Python 3.8+ installed. Then, install the required packages:
 
-```python
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
-from scipy.optimize import curve_fit
-from scipy import signal
-from  scipy.optimize import OptimizeWarning
-import warnings
-from finta import TA
-import os
-from utils import TradingGraph, Write_to_file
-from datetime import date, datetime, timedelta
-import math
-from collections import deque
-import neat
-import pickle as pickle
-from statsmodels.tsa.ar_model import AutoReg, ar_select_order
-from sklearn.linear_model import LinearRegression
-from sklearn.svm import SVR
-from sklearn.model_selection import train_test_split
-import random 
-from sklearn.preprocessing import PolynomialFeatures
-```
+bash
+Copy
+pip install -r requirements.txt
+Download Data:
+Place your historical market data (e.g., US30(10).csv) in the project directory.
 
-2. Create an instance of the `CustomEnv` class:
+Usage
+Running the Simulation
+To run the trading simulation, execute the following command:
 
-```python
-df = pd.read_csv('../US30(10).csv')  # Load historical price data
-df.columns=['Date','Open','High','Low','Close','Volume']  # Rename columns if necessary
-df['CloseDiff'] = df['Close'].diff()  # Calculate price differences
-df = df[3000:]  # Adjust data range as needed
+bash
+Copy
+python main.py
+Customizing the Environment
+You can customize the trading environment by modifying the parameters in the CustomEnv class:
 
-# Initialize the trading environment
-env = CustomEnv(df=df, Crystalball=1000, Drawdown_P=0.95, df_normalized=df, LotSize=0.02, AccountSize=1, Decimals=1, Spread=6, Multiple=1, Convertion=17.99, Stoploss=60)
-```
+python
+Copy
+env = CustomEnv(
+    df=df, 
+    crystalball=1000, 
+    drawdown_p=0.95, 
+    df_normalized=df, 
+    lot_size=0.02, 
+    account_size=1, 
+    decimals=1, 
+    spread=6, 
+    multiple=1, 
+    conversion=17.99, 
+    stoploss=60
+)
+Visualizing Results
+The simulation includes a visualization tool to display trading performance in real-time. Enable visualization by setting visualize=True in the random_games function:
 
-3. Use the trading environment to run simulations and test trading strategies:
+python
+Copy
+random_games(env, visualize=True)
+Code Structure
+CustomEnv Class: The core trading environment. Handles trading logic, state management, and performance tracking.
 
-```python
-Days = 0
+random_games Function: Simulates random trading episodes for testing and evaluation.
 
-# Run random games for testing
-Random_games(env, visualize=True)
-```
+get_action Function: Implements a simple trading strategy using polynomial regression for price forecasting.
 
-### Important Notes
+TradingGraph Class: Provides visualization of trading performance (imported from utils).
 
-- The custom trading environment is meant for educational and experimental purposes only. It does not constitute financial advice or a guarantee of profitable trading strategies.
+Dependencies
+Python 3.8+
 
-- The environment includes sample actions (`getaction()`) for buying, selling, or holding positions based on price forecasts. You may replace this function with your custom trading strategy.
+Libraries:
 
-- Ensure that you have the necessary historical price data in the format expected by the environment (`Date`, `Open`, `High`, `Low`, `Close`, `Volume`). Adjust the data range and columns as needed to match your dataset.
+pandas
 
-### License
+numpy
 
-This custom trading environment is licensed under the [MIT License](LICENSE).
+matplotlib
+
+scikit-learn
+
+scipy
+
+deque (from collections)
+
+Install all dependencies using:
+
+bash
+Copy
+pip install pandas numpy matplotlib scikit-learn scipy
+Contributing
+Contributions are welcome! If you'd like to contribute, please follow these steps:
+
+Fork the repository.
+
+Create a new branch for your feature or bugfix.
+
+Submit a pull request with a detailed description of your changes.
+
+License
+This project is licensed under the MIT License. See the LICENSE file for details.
